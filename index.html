@@ -80,13 +80,12 @@ h1{font-size:22px;margin:0;}
 .tf-input{flex:1;min-width:0;min-height:48px;font-size:16px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--fg);}
 .now-btn{min-width:48px;min-height:48px;font-size:22px;background:var(--accent);color:var(--accent-fg);border:none;border-radius:8px;cursor:pointer;}
 
-/* Nouvelle ligne pause */
+/* Ligne pause */
 .pause-block{background:var(--card2);border-radius:10px;padding:10px;margin-bottom:8px;}
-.pause-base{font-size:16px;margin-bottom:8px;}
-.pause-base strong{font-size:18px;}
+.pause-base{font-size:16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;}
 .pause-extra-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
-.pause-extra-label{font-size:14px;color:var(--muted);}
 .extra-btn{min-width:56px;min-height:44px;font-size:15px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--fg);cursor:pointer;font-weight:600;}
+.clear-btn{background:var(--danger);color:#fff;border:none;}
 .extra-input{width:74px;min-height:44px;font-size:16px;padding:0 8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--fg);text-align:center;}
 .pause-unit{font-size:14px;color:var(--muted);}
 
@@ -104,7 +103,7 @@ h1{font-size:22px;margin:0;}
 .sum-row{display:flex;justify-content:space-between;padding:6px 0;font-size:16px;}
 .sum-row.total{font-size:18px;font-weight:700;border-top:1px solid var(--border);margin-top:6px;padding-top:10px;}
 .sum-sep{height:1px;background:var(--border);margin:8px 0;}
-.danger{color:var(--danger);}
+.danger-text{color:var(--danger);}
 
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:100;}
 .modal[hidden]{display:none;}
@@ -176,7 +175,6 @@ h1{font-size:22px;margin:0;}
       <h3>Sauvegarde et synchronisation</h3>
       <div class="hint" style="margin-bottom:10px;">
         💡 <strong>Entre téléphone et PC :</strong> copiez les données sur l'un, collez-les sur l'autre.
-        Ou exportez le fichier JSON dans iCloud Drive / Google Drive / OneDrive, puis importez-le sur l'autre appareil.
       </div>
       <div class="sync-buttons">
         <button class="sync-btn" id="btnCopyData">📋 Copier mes données</button>
@@ -269,23 +267,19 @@ function save(){
   catch(e){console.warn('Sauvegarde localStorage impossible',e);}
 }
 
-/* Migration : ancien format pauseDebut/pauseFin -> pauseExtraMin */
 function migrateAllDays(){
   Object.keys(state.days).forEach(k=>{
     const day=state.days[k];
+    if(typeof day.pauseExtraMin!=='number') day.pauseExtraMin=0;
     if(day.pauseDebut!==undefined||day.pauseFin!==undefined){
       const pd=toMin(day.pauseDebut);
       const pf=toMin(day.pauseFin);
       if(pd!==null&&pf!==null&&pf>pd){
-        const dur=pf-pd;
-        day.pauseExtraMin = dur>45 ? dur-45 : 0;
-      } else {
-        day.pauseExtraMin = 0;
+        day.pauseExtraMin=pf-pd;
       }
       delete day.pauseDebut;
       delete day.pauseFin;
     }
-    if(typeof day.pauseExtraMin!=='number') day.pauseExtraMin=0;
   });
 }
 
@@ -309,14 +303,15 @@ function computeAutoPaniers(embauche,debauche,creneaux){
 }
 
 function computeDay(day,settings){
-  const res={totalMin:null,pauseMin:45,paniers:{matin:false,midi:false,soir:false},panierCents:0};
+  const res={totalMin:null,pauseMin:0,paniers:{matin:false,midi:false,soir:false},panierCents:0};
   if(!day||day.type!=='travail') return res;
 
   const e=toMin(day.embauche);
   const d=toMin(day.debauche);
-  const extra=Math.max(0,parseInt(day.pauseExtraMin)||0);
-  const pause=45+extra;
-  res.pauseMin=pause;
+  
+  // Pause : 0 par défaut, ou ce que l'utilisateur a mis
+  let pause = Math.max(0, parseInt(day.pauseExtraMin) || 0);
+  res.pauseMin = pause;
 
   if(e!==null&&d!==null){
     let t=d-e-pause;
@@ -426,14 +421,15 @@ function renderDayCard(d){
       ${timeField(key,'debauche','Débauche',day&&day.debauche)}
     </div>
     <div class="pause-block">
-      <div class="pause-base">⏸️ Pause : <strong>45 min</strong></div>
+      <div class="pause-base">
+        <span>⏸️ Pause totale : <strong>${extra} min</strong></span>
+      </div>
       <div class="pause-extra-row">
-        <span class="pause-extra-label">Pause en plus :</span>
-        <button class="extra-btn" data-date="${key}" data-min="15" aria-label="Ajouter 15 minutes de pause">+15</button>
-        <button class="extra-btn" data-date="${key}" data-min="30" aria-label="Ajouter 30 minutes de pause">+30</button>
-        <button class="extra-btn" data-date="${key}" data-min="45" aria-label="Ajouter 45 minutes de pause">+45</button>
-        <input type="number" class="extra-input" data-date="${key}" min="0" step="5" value="${extra}" inputmode="numeric" aria-label="Minutes de pause supplémentaires">
-        <span class="pause-unit">min</span>
+        <button class="extra-btn" data-date="${key}" data-min="15" aria-label="Ajouter 15 minutes">+15</button>
+        <button class="extra-btn" data-date="${key}" data-min="30" aria-label="Ajouter 30 minutes">+30</button>
+        <button class="extra-btn" data-date="${key}" data-min="45" aria-label="Ajouter 45 minutes">+45</button>
+        <button class="extra-btn clear-btn" data-date="${key}" data-min="clear" aria-label="Annuler la pause">Off</button>
+        <input type="number" class="extra-input" data-date="${key}" min="0" step="5" value="${extra}" inputmode="numeric" aria-label="Minutes manuelles">
       </div>
     </div>
     <div class="day-paniers">
@@ -502,7 +498,11 @@ function updateComputed(){
         pauseEl.textContent='';
       } else {
         hoursEl.textContent=formatDuration(c.totalMin);
-        pauseEl.textContent=`pause ${formatPause(c.pauseMin)}`;
+        if(c.pauseMin>0){
+          pauseEl.textContent=`pause ${formatPause(c.pauseMin)}`;
+        } else {
+          pauseEl.textContent='';
+        }
       }
     } else {
       hoursEl.textContent='';
@@ -513,6 +513,10 @@ function updateComputed(){
     card.querySelectorAll('.chip').forEach(chip=>{
       chip.classList.toggle('on',!!c.paniers[chip.dataset.p]);
     });
+    
+    // Met à jour l'affichage de la pause totale dans le bloc
+    const pauseBaseEl = card.querySelector('.pause-base strong');
+    if(pauseBaseEl) pauseBaseEl.textContent = `${c.pauseMin} min`;
   });
 
   document.querySelectorAll('.week').forEach(weekEl=>{
@@ -563,7 +567,7 @@ function renderMonthSummary(){
     <div class="sum-row"><span>Heures travaillées</span><strong>${formatDuration(totalMin)}</strong></div>
     <div class="sum-row"><span>Congés payés posés</span><strong>${conges} j</strong></div>
     <div class="sum-row"><span>Jours de repos</span><strong>${repos} j</strong></div>
-    <div class="sum-row"><span>Congés restants</span><strong class="${restants<0?'danger':''}">${formatJours(restants)} j</strong></div>
+    <div class="sum-row"><span>Congés restants</span><strong class="${restants<0?'danger-text':''}">${formatJours(restants)} j</strong></div>
     <div class="sum-sep"></div>
     <div class="sum-row"><span>Casse-croûte</span><strong>${nMatin}</strong></div>
     <div class="sum-row"><span>Repas midi</span><strong>${nMidi}</strong></div>
@@ -593,7 +597,6 @@ function scrollToToday(smooth){
   window.scrollTo({top:Math.max(0,targetY),behavior:smooth?'smooth':'auto'});
 }
 
-/* ====== Interactions calendrier ====== */
 document.getElementById('calendar').addEventListener('change',(e)=>{
   const t=e.target;
   if(t.matches('.tf-input')){
@@ -665,9 +668,15 @@ function handleChip(chip){
 
 function handleExtraPause(btn){
   const key=btn.dataset.date;
-  const minutes=parseInt(btn.dataset.min,10);
+  const val=btn.dataset.min;
   const day=ensureDay(key);
-  day.pauseExtraMin=(day.pauseExtraMin||0)+minutes;
+  
+  if(val === 'clear'){
+    day.pauseExtraMin = 0;
+  } else {
+    day.pauseExtraMin = (day.pauseExtraMin || 0) + parseInt(val,10);
+  }
+  
   save();
   const card=btn.closest('.day-card');
   const input=card.querySelector('.extra-input');
@@ -675,7 +684,6 @@ function handleExtraPause(btn){
   updateComputed();
 }
 
-/* ====== Navigation ====== */
 document.getElementById('btnPrev').addEventListener('click',()=>goMonth(-1));
 document.getElementById('btnNext').addEventListener('click',()=>goMonth(1));
 document.getElementById('btnToday').addEventListener('click',goToday);
@@ -688,7 +696,6 @@ document.getElementById('yearSelect').addEventListener('change',(e)=>{
   render();
 });
 
-/* ====== Réglages ====== */
 const modal=document.getElementById('settingsModal');
 document.getElementById('btnSettings').addEventListener('click',openSettings);
 document.getElementById('btnCloseSettings').addEventListener('click',()=>{modal.hidden=true;});
@@ -744,7 +751,6 @@ document.getElementById('btnReset').addEventListener('click',()=>{
   updateComputed();
 });
 
-/* ====== Export / Import / Sync ====== */
 document.getElementById('btnExport').addEventListener('click',exportData);
 document.getElementById('btnImport').addEventListener('click',()=>{
   document.getElementById('fileImport').click();
@@ -858,7 +864,6 @@ function checkExportReminder(){
   }
 }
 
-/* ====== Démarrage ====== */
 function init(){
   loadState();
   migrateAllDays();
