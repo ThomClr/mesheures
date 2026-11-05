@@ -1,5 +1,5 @@
 // Service worker : mise en cache de tous les fichiers pour un fonctionnement 100% hors-ligne.
-const CACHE_NAME = 'mes-heures-v3';
+const CACHE_NAME = 'mes-heures-v4';
 const ASSETS = ['./', './index.html', './manifest.json', './service-worker.js'];
 
 self.addEventListener('install', (event) => {
