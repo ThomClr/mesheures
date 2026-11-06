@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mes Heures">
+<meta name="theme-color" content="#0a5fd6">
+<link rel="manifest" href="manifest.json">
+<title>Mes Heures</title>
+<style>
+/* Thème clair / sombre automatique */
+:root{--bg:#f2f4f7;--c:#fff;--t:#111;--m:#667085;--p:#0a5fd6;--g:#0a7a2f;--r:#c62828;--b:#cfd4dc}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--c:#1c1c1e;--t:#fff;--m:#9aa0a6;--p:#4d9aff;--g:#42d77d;--r:#ff6b6b;--b:#3a3a3c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--t);font:18px/1.3 -apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+header{position:sticky;top:0;background:var(--bg);padding:8px 10px;z-index:5;border-bottom:1px solid var(--b)}
+.nav{display:flex;gap:6px;margin:4px 0}
+button,select,input{font:inherit;font-size:16px;color:var(--t);background:var(--c);border:2px solid var(--b);border-radius:12px;min-height:48px;padding:0 12px}
+button{font-weight:600;cursor:pointer}
+.nav button{flex:0 0 52px;padding:0}
+.nav select,.nav input{flex:1;min-width:0}
+.nav .wide{flex:1}
+main{padding:10px;max-width:640px;margin:auto}
+.card{background:var(--c);border:2px solid var(--b);border-radius:16px;padding:12px;margin:10px 0}
+.card.today{border-color:var(--p);box-shadow:0 0 0 3px var(--p)}
+.hd{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.hd b{font-size:20px}
+.row{display:flex;align-items:center;gap:6px;margin:8px 0;flex-wrap:wrap}
+.lb{width:84px;color:var(--m)}
+.row input[type=time]{flex:1;min-width:110px}
+.row input[type=number]{width:84px}
+.s{min-width:56px;padding:0 8px}
+.x{color:var(--r);border-color:var(--r)}
+.now{flex:0 0 52px;padding:0}
+.chips{display:flex;gap:6px;margin:8px 0}
+.chip{flex:1;opacity:.55}
+.chip.on{opacity:1;background:var(--g);color:#fff;border-color:var(--g)}
+.tot{display:flex;justify-content:space-between;align-items:baseline;font-size:22px;font-weight:700;margin-top:6px}
+.g{color:var(--g)}.r{color:var(--r)}
+.wk{background:var(--p);color:#fff;border-radius:12px;padding:12px;margin:10px 0 22px;display:flex;justify-content:space-between;font-size:19px}
+.wk .g{color:#fff}
+.sum{background:var(--c);border:2px solid var(--b);border-radius:16px;padding:14px;margin:10px 0 40px}
+.sum h3{margin:0 0 8px}.sum div{display:flex;justify-content:space-between;padding:4px 0}
+#bn{margin:8px 10px}#bn div{background:#fff3cd;color:#664d03;border-radius:12px;padding:10px;display:flex;gap:8px;align-items:center;justify-content:space-between}
+dialog{width:min(94vw,560px);max-height:90vh;background:var(--bg);color:var(--t);border:2px solid var(--b);border-radius:18px;padding:14px}
+dialog::backdrop{background:#0008}
+dialog h3{margin:14px 0 4px}
+dialog .row input{flex:1;min-width:90px}
+dialog button.full{width:100%;margin:5px 0}
+</style>
+</head>
+<body>
+<header>
+  <div class="nav"><button id="prev" aria-label="Mois précédent">◀</button><select id="sm"></select><input id="sy" type="number" inputmode="numeric"><button id="next" aria-label="Mois suivant">▶</button></div>
+  <div class="nav"><button id="today" class="wide">Aujourd'hui</button><button id="cfg" aria-label="Réglages">⚙</button></div>
+</header>
+<div id="bn"></div>
+<main id="app"></main>
+<dialog id="dlg"></dialog>
+<input type="file" id="fi" accept=".json,application/json" hidden>
+
+<script>
+'use strict';
+// ====== Constantes et outils ======
+const KEY='mesHeures_v4';
+const MOIS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+const JOURS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+// Tarifs en centimes, créneaux en "HH:MM"
+const DEF={tarifs:{matin:887,midi:1636,soir:1636},creneaux:{matin:'05:00',midiD:'11:45',midiF:'14:15',soirD:'18:45',soirF:'21:15'},soldeConges:0,dateReferenceSolde:'',dernierExport:null};
+const $=s=>document.querySelector(s);
+const clone=o=>JSON.parse(JSON.stringify(o));
+const pad=n=>String(n).padStart(2,'0');
+const kd=(y,m,d)=>y+'-'+pad(m+1)+'-'+pad(d);
+const toMin=s=>{if(!s)return null;const p=s.split(':');return +p[0]*60+ +p[1]};     // minutes entières
+const fmtH=m=>Math.floor(m/60)+'h'+pad(m%60);
+const fmtE=c=>(c/100).toFixed(2).replace('.',',')+' €';
+const PAN=['matin','midi','soir'], PANL={matin:'Matin',midi:'Midi',soir:'Soir'};
+const T=new Date(), todayKey=kd(T.getFullYear(),T.getMonth(),T.getDate());
+let view={y:T.getFullYear(),m:T.getMonth()};
+
+// ====== Données ======
+function norm(s){const r=clone(DEF);if(s){Object.assign(r,s);r.tarifs=Object.assign(clone(DEF.tarifs),s.tarifs);r.creneaux=Object.assign(clone(DEF.creneaux),s.creneaux)}return r}
+function load(){try{const r=JSON.parse(localStorage.getItem(KEY));if(r&&r.days)return{days:r.days,settings:norm(r.settings)}}catch(e){}return{days:{},settings:clone(DEF)}}
+let S=load();
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('Sauvegarde impossible (stockage plein ?)')}};
+
+// ====== Calculs ======
+// Paniers automatiques selon les créneaux
+function auto(d){const c=S.settings.creneaux,e=toMin(d.embauche),f=toMin(d.debauche);
+  return{matin:e!=null&&e<toMin(c.matin),
+    midi:e!=null&&f!=null&&e<=toMin(c.midiD)&&f>=toMin(c.midiF),
+    soir:e!=null&&f!=null&&e<=toMin(c.soirD)&&f>=toMin(c.soirF)}}
+// Le manuel prime sur l'automatique
+function eff(d){const a=auto(d),r={};PAN.forEach(k=>r[k]=d.manuel&&typeof d.manuel[k]==='boolean'?d.manuel[k]:a[k]);return r}
+// Total du jour (minutes) + montant paniers (centimes)
+function info(d){const o={min:0,done:false,eur:0,p:{matin:0,midi:0,soir:0}};
+  if(!d||d.type!=='travail')return o;
+  const e=toMin(d.embauche),f=toMin(d.debauche);
+  if(e!=null&&f!=null){o.done=true;o.min=Math.max(0,f-e-(d.pauseExtraMin||0))}
+  const t=d.tarifs||S.settings.tarifs,p=d.paniers||{};
+  PAN.forEach(k=>{if(p[k]){o.p[k]=1;o.eur+=t[k]}});
+  return o}
+function congesRestants(){const ref=S.settings.dateReferenceSolde;let u=0;
+  for(const k in S.days)if(S.days[k].type==='conge'&&(!ref||k>=ref))u++;
+  return S.settings.soldeConges-u}
+
+// Modifie un jour (le crée si besoin), fige les tarifs, recalcule les paniers
+function upd(key,fn){
+  const d=S.days[key]||(S.days[key]={type:'travail',embauche:'',debauche:'',pauseExtraMin:0,paniers:{},tarifs:null,manuel:{}});
+  d.manuel=d.manuel||{};fn(d);
+  if(!d.tarifs)d.tarifs=clone(S.settings.tarifs);
+  d.paniers=d.type==='travail'?eff(d):{};
+  save();render()}
+
+// ====== Affichage ======
+function card(key,d,wd,D,i){
+  D=D||{type:'travail'};const t=D.type||'travail';let b='';
+  if(t==='travail'){
+    const row=(l,f,v)=>`<div class="row"><span class="lb">${l}</span><input type="time" data-f="${f}" value="${v||''}"><button class="now" data-a="now" data-f="${f}" aria-label="Maintenant">⏱️</button></div>`;
+    b+=row('Embauche','embauche',D.embauche)+row('Débauche','debauche',D.debauche);
+    b+=`<div class="row"><span class="lb">Pause</span><input type="number" inputmode="numeric" min="0" data-f="pause" value="${D.pauseExtraMin||0}"><button class="s" data-a="add" data-v="15">+15</button><button class="s" data-a="add" data-v="30">+30</button><button class="s" data-a="add" data-v="45">+45</button><button class="s x" data-a="p0" aria-label="Pause à zéro">❌</button></div>`;
+    const p=D.paniers||{};
+    b+='<div class="chips">'+PAN.map(k=>`<button class="chip ${p[k]?'on':''}" data-a="pan" data-k="${k}">${PANL[k]}</button>`).join('')+'</div>';
+    const tt=i.done?fmtH(i.min):(D.embauche||D.debauche?'en cours':'—');
+    b+=`<div class="tot"><span>${tt}</span><span class="g">${i.eur?fmtE(i.eur):''}</span></div>`;
+  } else b+=`<div class="tot"><span>0h00</span></div>`;
+  const dn=+key.slice(8);
+  return `<section class="card ${key===todayKey?'today':''}" data-key="${key}"><div class="hd"><b>${JOURS[wd]} ${dn}</b><select data-f="type"><option value="travail"${t==='travail'?' selected':''}>Travail</option><option value="conge"${t==='conge'?' selected':''}>Congé payé</option><option value="repos"${t==='repos'?' selected':''}>Repos</option></select></div>${b}</section>`}
+
+function render(scrollToday){
+  const y=view.y,m=view.m,N=new Date(y,m+1,0).getDate(),sy=window.scrollY;
+  let h='',w={min:0,eur:0},tot={min:0,conge:0,repos:0,p:{matin:0,midi:0,soir:0},eur:0};
+  for(let d=1;d<=N;d++){
+    const key=kd(y,m,d),D=S.days[key],wd=(new Date(y,m,d).getDay()+6)%7,i=info(D);
+    h+=card(key,d,wd,D,i);
+    w.min+=i.min;w.eur+=i.eur;tot.min+=i.min;tot.eur+=i.eur;
+    PAN.forEach(k=>tot.p[k]+=i.p[k]);
+    if(D&&D.type==='conge')tot.conge++;if(D&&D.type==='repos')tot.repos++;
+    if(wd===6||d===N){h+=`<div class="wk"><span>Semaine : <b>${fmtH(w.min)}</b></span><b class="g">${fmtE(w.eur)}</b></div>`;w={min:0,eur:0}}}
+  const tr=S.settings.tarifs,cr=Math.round(congesRestants()*100)/100;
+  h+=`<div class="sum"><h3>Récap ${MOIS[m]} ${y}</h3>
+  <div><span>Total heures</span><b>${fmtH(tot.min)}</b></div>
+  <div><span>Jours de congé</span><b>${tot.conge}</b></div>
+  <div><span>Jours de repos</span><b>${tot.repos}</b></div>
+  <div><span>Paniers matin</span><b>${tot.p.matin}</b></div>
+  <div><span>Paniers midi</span><b>${tot.p.midi}</b></div>
+  <div><span>Paniers soir</span><b>${tot.p.soir}</b></div>
+  <div><span>Total paniers</span><b class="g">${fmtE(tot.eur)}</b></div>
+  <div><span>Congés restants</span><b class="${cr<0?'r':''}">${cr}</b></div></div>`;
+  $('#app').innerHTML=h;
+  $('#sm').value=m;$('#sy').value=y;
+  // Rappel de sauvegarde (> 30 jours)
+  const de=S.settings.dernierExport,vieux=!de||(Date.now()-new Date(de).getTime())/864e5>30;
+  $('#bn').innerHTML=Object.keys(S.days).length&&vieux?'<div><span>💾 Pas d\'export depuis plus de 30 jours</span><button id="bnb">Exporter</button></div>':'';
+  if(scrollToday){const t=$('.today');if(t)t.scrollIntoView({block:'center'})}else window.scrollTo(0,sy)}
+
+// ====== Événements des cartes ======
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-a]'),c=e.target.closest('[data-key]');if(!b||!c)return;
+  const key=c.dataset.key,a=b.dataset.a;
+  if(a==='now'){const n=new Date(),v=pad(n.getHours())+':'+pad(n.getMinutes());upd(key,d=>d[b.dataset.f]=v)}
+  else if(a==='add')upd(key,d=>d.pauseExtraMin=(d.pauseExtraMin||0)+ +b.dataset.v);
+  else if(a==='p0')upd(key,d=>d.pauseExtraMin=0);
+  else if(a==='pan')upd(key,d=>{const k=b.dataset.k,nv=!eff(d)[k];if(nv===auto(d)[k])delete d.manuel[k];else d.manuel[k]=nv})});
+document.addEventListener('change',e=>{
+  const f=e.target.dataset.f,c=e.target.closest('[data-key]');if(!f||!c)return;
+  const v=e.target.value;
+  upd(c.dataset.key,d=>{if(f==='pause')d.pauseExtraMin=Math.max(0,parseInt(v)||0);else d[f]=v})});
+
+// ====== Navigation ======
+$('#sm').innerHTML=MOIS.map((n,i)=>`<option value="${i}">${n}</option>`).join('');
+const go=(y,m)=>{const d=new Date(y,m,1);view={y:d.getFullYear(),m:d.getMonth()};render();window.scrollTo(0,0)};
+$('#prev').onclick=()=>go(view.y,view.m-1);
+$('#next').onclick=()=>go(view.y,view.m+1);
+$('#sm').onchange=e=>go(view.y,+e.target.value);
+$('#sy').onchange=e=>{const y=parseInt(e.target.value);if(y>0)go(y,view.m);else render()};
+$('#today').onclick=()=>{view={y:T.getFullYear(),m:T.getMonth()};render(true)};
+document.addEventListener('click',e=>{if(e.target.id==='bnb')openCfg()});
+
+// ====== Réglages ======
+const dlg=$('#dlg');
+function openCfg(){
+  const s=S.settings,t=s.tarifs,c=s.creneaux,e=v=>(v/100).toFixed(2);
+  dlg.innerHTML=`<h2 style="margin:0">Réglages</h2>
+  <h3>Tarifs des paniers (€)</h3>
+  <div class="row"><span class="lb">Matin</span><input id="t_matin" type="number" step="0.01" inputmode="decimal" value="${e(t.matin)}"></div>
+  <div class="row"><span class="lb">Midi</span><input id="t_midi" type="number" step="0.01" inputmode="decimal" value="${e(t.midi)}"></div>
+  <div class="row"><span class="lb">Soir</span><input id="t_soir" type="number" step="0.01" inputmode="decimal" value="${e(t.soir)}"></div>
+  <h3>Créneaux</h3>
+  <div class="row"><span class="lb">Matin avant</span><input id="c_matin" type="time" value="${c.matin}"></div>
+  <div class="row"><span class="lb">Midi</span><input id="c_midiD" type="time" value="${c.midiD}"><input id="c_midiF" type="time" value="${c.midiF}"></div>
+  <div class="row"><span class="lb">Soir</span><input id="c_soirD" type="time" value="${c.soirD}"><input id="c_soirF" type="time" value="${c.soirF}"></div>
+  <button class="full" id="rst">Remettre tarifs et créneaux par défaut</button>
+  <h3>Congés payés</h3>
+  <div class="row"><span class="lb">Solde</span><input id="solde" type="number" step="0.5" inputmode="decimal" value="${s.soldeConges}"></div>
+  <div class="row"><span class="lb">Depuis le</span><input id="dref" type="date" value="${s.dateReferenceSolde||''}"></div>
+  <div style="color:var(--m)">Restants : <b class="${congesRestants()<0?'r':''}">${Math.round(congesRestants()*100)/100}</b></div>
+  <h3>Sauvegarde</h3>
+  <button class="full" id="exp">⬇️ Exporter (fichier JSON)</button>
+  <button class="full" id="imp">⬆️ Importer (fichier JSON)</button>
+  <button class="full" id="cpy">📋 Copier les données</button>
+  <button class="full" id="pst">📥 Coller les données</button>
+  <button class="full" id="cls" style="background:var(--p);color:#fff;border-color:var(--p)">Fermer</button>`;
+  dlg.showModal()}
+$('#cfg').onclick=openCfg;
+const eur=v=>Math.max(0,Math.round(parseFloat(String(v).replace(',','.'))*100)||0);
+dlg.addEventListener('change',e=>{
+  const id=e.target.id,s=S.settings;
+  if(id[0]==='t'&&id[1]==='_')s.tarifs[id.slice(2)]=eur(e.target.value);
+  else if(id[0]==='c'&&id[1]==='_'){if(e.target.value)s.creneaux[id.slice(2)]=e.target.value}
+  else if(id==='solde'){s.soldeConges=parseFloat(String(e.target.value).replace(',','.'))||0;s.dateReferenceSolde=todayKey;$('#dref').value=todayKey}  // date de réf = aujourd'hui
+  else if(id==='dref')s.dateReferenceSolde=e.target.value;
+  else return;
+  save();render()});
+function appliquer(txt){
+  let o;try{o=JSON.parse(txt)}catch(e){alert('Données invalides.');return}
+  if(!o||typeof o.days!=='object'){alert('Format non reconnu.');return}
+  if(!confirm('Remplacer TOUTES les données actuelles par celles-ci ?'))return;
+  S={days:o.days,settings:norm(o.settings)};save();render();dlg.close()}
+dlg.addEventListener('click',async e=>{
+  const id=e.target.id;
+  if(id==='cls')dlg.close();
+  else if(id==='rst'){S.settings.tarifs=clone(DEF.tarifs);S.settings.creneaux=clone(DEF.creneaux);save();render();openCfg()}
+  else if(id==='exp'){
+    S.settings.dernierExport=todayKey;save();render();
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));
+    a.download='mes-heures-'+todayKey+'.json';document.body.appendChild(a);a.click();a.remove()}
+  else if(id==='imp')$('#fi').click();
+  else if(id==='cpy'){const j=JSON.stringify(S);try{await navigator.clipboard.writeText(j);alert('Données copiées.')}catch(x){prompt('Copie ce texte :',j)}}
+  else if(id==='pst'){let t;try{t=await navigator.clipboard.readText()}catch(x){t=prompt('Colle les données ici :')}if(t)appliquer(t)}});
+$('#fi').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>appliquer(r.result);r.readAsText(f);e.target.value=''};
+
+// ====== Démarrage ======
+if('serviceWorker' in navigator)navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+render(true);
+</script>
+</body>
+</html>
