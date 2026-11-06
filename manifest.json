@@ -1,0 +1,20 @@
+{
+  "name": "Mes Heures",
+  "short_name": "Mes Heures",
+  "description": "Suivi des heures de travail — chauffeur routier",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f2f7",
+  "theme_color": "#2563eb",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='100' fill='%232563eb'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%23fff' stroke-width='30'/%3E%3Cline x1='256' y1='256' x2='256' y2='140' stroke='%23fff' stroke-width='30' stroke-linecap='round'/%3E%3Cline x1='256' y1='256' x2='340' y2='300' stroke='%23fff' stroke-width='30' stroke-linecap='round'/%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
